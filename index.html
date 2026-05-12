@@ -7,7 +7,8 @@
 <title>PE Progress Tracker</title>
 <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@600;700&family=DM+Sans:wght@400;500;600&family=DM+Mono:wght@400&display=swap" rel="stylesheet"/>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
+<!-- qrcodejs — exposes window.QRCode, works in all browsers -->
+<script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
 <style>
 :root{
   /* ── Luxe Navy + Gold palette ── */
@@ -1309,52 +1310,44 @@ function generateQR(){
   if(!ME) return;
   const period = document.getElementById("qr-period").value;
 
-  // Build the student page URL dynamically from current location
-  const base = window.location.href.replace(/[^/?#]*(\?.*)?$/, "") + "student.html";
+  // Build student page URL from current location
+  const base = window.location.href.replace(/\/[^/]*$/, "/") + "student.html";
   currentQRUrl = base + "?t=" + ME.id + (period !== "all" ? "&p=" + period : "");
-
   document.getElementById("qr-url").textContent = currentQRUrl;
 
-  // Use QRCode library — try toDataURL first (more reliable), fallback to toCanvas
-  const canvas = document.getElementById("qr-canvas");
   const wrap = document.getElementById("qr-img-wrap");
+  wrap.innerHTML = "";  // clear old QR
 
   if(typeof QRCode === "undefined"){
-    // Library not loaded — show URL only
-    canvas.style.display = "none";
-    if(wrap) wrap.innerHTML = '<div style="font-size:12px;color:var(--red);text-align:center">QR library not loaded.<br>Share the link below instead.</div>';
+    wrap.innerHTML = '<div style="font-size:12px;color:var(--red);text-align:center;padding:1rem">QR library failed to load.<br>Share the link below instead.</div>';
     return;
   }
 
-  try {
-    QRCode.toDataURL(currentQRUrl, {
-      width: 220, margin: 2,
-      color: { dark: "#0D1B3E", light: "#FFFFFF" }
-    }, (err, dataUrl) => {
-      if(err){
-        console.error("QR error:", err);
-        canvas.style.display = "none";
-        if(wrap) wrap.innerHTML = `<div style="font-size:12px;color:var(--text2);text-align:center">QR generation failed.<br>Share the link below instead.</div>`;
-        return;
-      }
-      // Render as img tag — works in all browsers including Safari
-      canvas.style.display = "none";
-      if(wrap){
-        wrap.innerHTML = `<img src="${dataUrl}" style="width:220px;height:220px;border-radius:8px;display:block" alt="QR Code"/>`;
-      }
-    });
-  } catch(e){
-    console.error("QR exception:", e);
-  }
+  // qrcodejs renders into a div — create a fresh container each time
+  const container = document.createElement("div");
+  container.style.cssText = "background:#fff;padding:10px;border-radius:10px;display:inline-block";
+  wrap.appendChild(container);
+
+  new QRCode(container, {
+    text: currentQRUrl,
+    width: 200,
+    height: 200,
+    colorDark: "#0D1B3E",
+    colorLight: "#ffffff",
+    correctLevel: QRCode.CorrectLevel.M
+  });
 }
 
 function downloadQR(){
   const period = document.getElementById("qr-period").value;
-  const img = document.querySelector("#qr-img-wrap img");
-  if(!img){ alert("QR not ready yet."); return; }
+  // qrcodejs creates either a canvas or img inside the container
+  const img   = document.querySelector("#qr-img-wrap img");
+  const cvs   = document.querySelector("#qr-img-wrap canvas");
   const a = document.createElement("a");
-  a.download = `pe-qr-${period === "all" ? "all" : "period"+period}.png`;
-  a.href = img.src;
+  a.download = "pe-qr-" + (period === "all" ? "all" : "period"+period) + ".png";
+  if(cvs)       a.href = cvs.toDataURL("image/png");
+  else if(img)  a.href = img.src;
+  else { alert("QR not ready yet."); return; }
   a.click();
 }
 
