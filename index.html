@@ -94,7 +94,7 @@ label.lbl:first-child{margin-top:0}
 <script>
 const SUPABASE_URL = "https://vsycqimhkzppautumsyo.supabase.co";
 const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZzeWNxaW1oa3pwcGF1dHVtc3lvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc4MTMyMjEsImV4cCI6MjA5MzM4OTIyMX0.upBxit5d5nA6b9oVy8CbxIbzpO2m7_Df27IgKjg3l2k";
-const ADMIN_EMAIL  = "chuynh@lasdschools.org"; // ✏️ change this to your email
+const ADMIN_EMAIL  = "your-admin@example.com"; // ✏️ change this to your email
 </script>
 <!-- ════════════════════════════════════════════════ -->
 
@@ -161,12 +161,13 @@ const ADMIN_EMAIL  = "chuynh@lasdschools.org"; // ✏️ change this to your ema
       </div>
 
       <div id="pane-roster" class="card">
-        <div class="row" style="margin-bottom:12px">
+        <div class="row" style="margin-bottom:12px;flex-wrap:wrap;gap:8px">
           <select id="roster-period" onchange="renderRoster()" style="width:auto"><option value="all">All Periods</option></select>
           <span id="roster-count" style="font-size:13px;color:var(--text2)"></span>
+          <button onclick="resetPeriodCodes()" style="margin-left:auto;font-size:12px;padding:5px 12px;color:var(--gold);background:var(--gold-glow);border-color:rgba(201,168,76,0.3)" title="Reset all codes for selected period">↻ Reset Period Codes</button>
         </div>
         <div style="overflow-x:auto"><table>
-          <thead><tr><th>Student</th><th>Grade</th><th>Period</th><th>Access Code &nbsp;<span style="font-weight:400;color:var(--text3)">↻ to reset</span></th><th>Skills Logged</th></tr></thead>
+          <thead><tr><th>Student</th><th>Grade</th><th>Period</th><th>Access Code &nbsp;<span style="font-weight:400;color:var(--text3)">↻ to reset</span></th><th>Skills Logged</th><th>Actions</th></tr></thead>
           <tbody id="roster-body"><tr><td colspan="5" style="text-align:center;padding:2rem"><div class="spinner"></div></td></tr></tbody>
         </table></div>
       </div>
@@ -447,8 +448,11 @@ const ADMIN_EMAIL  = "chuynh@lasdschools.org"; // ✏️ change this to your ema
       <button onclick="closeModal()" style="margin-left:auto;border:none;background:none;font-size:20px;color:var(--text2);cursor:pointer">×</button>
     </div>
     <div style="padding:1.25rem">
-      <div class="info">Simulated — connect Resend or SendGrid for real delivery.</div>
-      <div class="row" style="margin-bottom:12px">
+      <div class="info" id="email-info">Ready to send via Resend. Students with no email address will be skipped.</div>
+      <div class="row" style="margin-bottom:12px;flex-wrap:wrap;gap:8px">
+        <select id="email-period-filter" onchange="renderEmailList()" style="width:auto;font-size:13px">
+          <option value="all">All Periods</option>
+        </select>
         <span id="email-count" style="font-size:13px;color:var(--text2)"></span>
         <button style="margin-left:auto" onclick="sendAll()">Send All</button>
       </div>
@@ -675,6 +679,7 @@ function renderRoster(){
         </div>
       </td>
       <td><div class="row" style="gap:6px"><div style="height:4px;width:56px;background:var(--border2);border-radius:99px;overflow:hidden"><div style="height:4px;width:${pct}%;background:var(--green);border-radius:99px"></div></div><span style="font-size:11px;color:var(--text2)">${logged}/${skills.length}</span></div></td>
+      <td><button onclick="deleteStudent('${s.id}','${s.first} ${s.last}')" style="font-size:11px;padding:3px 8px;color:var(--red);background:var(--red-lt);border-color:transparent" title="Delete student">🗑</button></td>
     </tr>`;
   }).join("");
 }
@@ -891,14 +896,115 @@ async function importCSV(){
 function cancelCSV(){csvRows=[];document.getElementById("csv-preview").classList.add("hidden");document.getElementById("csv-file").value="";}
 
 // ── EMAIL MODAL ───────────────────────────────────────────────
+const RESEND_KEY = "re_QzQEXVu8_K7WeVXMQAhqEQvcRnR83hkSN";
+
 function openEmailModal(){
   sentEmails=[];
-  document.getElementById("email-count").textContent=`${students.length} students · 0 sent`;
-  document.getElementById("email-list").innerHTML=students.map(s=>`<div class="row" style="padding:9px 12px;background:var(--surface2);border-radius:6px;margin-bottom:6px">${avHTML(s.first,s.last,28)}<div style="flex:1"><div style="font-size:13px;font-weight:500">${s.first} ${s.last}</div><div style="font-size:11px;color:var(--text2)">${s.email||"no email"}</div></div><span class="mono badge badge-gray" style="font-size:11px">${s.access_code}</span><button id="eb-${s.id}" onclick="sendOne('${s.id}')" style="font-size:12px;padding:3px 10px">Send</button></div>`).join("");
+  // Populate period filter
+  const pf = document.getElementById("email-period-filter");
+  const periods = [...new Set(students.map(s=>s.period))].sort();
+  pf.innerHTML = '<option value="all">All Periods</option>' + periods.map(p=>`<option value="${p}">Period ${p}</option>`).join("");
   document.getElementById("modal").classList.remove("hidden");
+  renderEmailList();
 }
-function sendOne(id){const btn=document.getElementById(`eb-${id}`);if(btn){btn.disabled=true;btn.textContent="…";}setTimeout(()=>{sentEmails.push(id);if(btn)btn.outerHTML=`<span class="badge badge-green">Sent ✓</span>`;document.getElementById("email-count").textContent=`${students.length} students · ${sentEmails.length} sent`;},700);}
-function sendAll(){students.forEach((s,i)=>setTimeout(()=>sendOne(s.id),i*200));}
+
+function renderEmailList(){
+  const period = document.getElementById("email-period-filter")?.value || "all";
+  const list = period === "all" ? students : students.filter(s => s.period === +period);
+  const withEmail = list.filter(s => s.email);
+  const noEmail   = list.filter(s => !s.email);
+  document.getElementById("email-count").textContent =
+    `${withEmail.length} with email · ${noEmail.length} no email · ${sentEmails.length} sent`;
+  document.getElementById("email-list").innerHTML =
+    list.map(s=>`
+      <div class="row" style="padding:9px 12px;background:var(--surface2);border-radius:6px;margin-bottom:6px">
+        ${avHTML(s.first,s.last,28)}
+        <div style="flex:1">
+          <div style="font-size:13px;font-weight:500">${s.first} ${s.last}</div>
+          <div style="font-size:11px;color:${s.email?"var(--text2)":"var(--red)"}">${s.email||"⚠ no email on file"}</div>
+        </div>
+        <span class="mono badge badge-gray" style="font-size:11px">${s.access_code}</span>
+        ${s.email
+          ? `<button id="eb-${s.id}" onclick="sendOne('${s.id}')" style="font-size:12px;padding:3px 10px;width:auto">Send</button>`
+          : `<span style="font-size:11px;color:var(--text3)">—</span>`
+        }
+      </div>`).join("");
+}
+
+async function sendOne(id){
+  const s = students.find(x=>x.id===id);
+  if(!s||!s.email) return;
+  const btn = document.getElementById(`eb-${id}`);
+  if(btn){ btn.disabled=true; btn.textContent="Sending…"; }
+
+  const teacherName = profile?.name || "Your PE Teacher";
+  const schoolName  = profile?.school || "School";
+
+  try {
+    const res = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: {
+        "Authorization": "Bearer " + RESEND_KEY,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        from: "PE Tracker <onboarding@resend.dev>",
+        to: [s.email],
+        subject: "Your PE Progress Tracker Access Code",
+        html: `
+          <div style="font-family:sans-serif;max-width:480px;margin:0 auto;background:#09122B;color:#F0E6C8;padding:2rem;border-radius:12px">
+            <div style="text-align:center;margin-bottom:1.5rem">
+              <div style="font-size:32px">🏆</div>
+              <div style="font-size:20px;font-weight:700;color:#C9A84C;letter-spacing:.06em">PE PROGRESS TRACKER</div>
+              <div style="font-size:13px;color:#A8B4CC;margin-top:4px">${schoolName}</div>
+            </div>
+            <p style="margin-bottom:1rem">Hi <strong>${s.first}</strong>,</p>
+            <p style="margin-bottom:1.5rem;color:#A8B4CC">Your access code for PE Progress Tracker is below. Use it to log your weekly scores.</p>
+            <div style="background:#1E2F5A;border:1px solid rgba(201,168,76,0.4);border-radius:10px;padding:1.25rem;text-align:center;margin-bottom:1.5rem">
+              <div style="font-size:13px;color:#A8B4CC;margin-bottom:6px;text-transform:uppercase;letter-spacing:.06em">Your Access Code</div>
+              <div style="font-family:monospace;font-size:28px;font-weight:700;color:#C9A84C;letter-spacing:.1em">${s.access_code}</div>
+            </div>
+            <p style="font-size:13px;color:#A8B4CC;margin-bottom:.5rem"><strong style="color:#F0E6C8">How to use it:</strong></p>
+            <ol style="font-size:13px;color:#A8B4CC;padding-left:1.25rem;line-height:1.8">
+              <li>Scan your teacher's QR code or visit the class link</li>
+              <li>Find your name in the list</li>
+              <li>Enter this code to confirm it's you</li>
+              <li>Log your scores for the week!</li>
+            </ol>
+            <hr style="border:none;border-top:1px solid rgba(201,168,76,0.2);margin:1.5rem 0"/>
+            <p style="font-size:12px;color:#6B7A99;text-align:center">Keep this code private — it unlocks your personal scores.<br>${teacherName} · ${schoolName}</p>
+          </div>
+        `
+      })
+    });
+
+    if(res.ok){
+      sentEmails.push(id);
+      if(btn) btn.outerHTML = `<span class="badge badge-green">Sent ✓</span>`;
+    } else {
+      const err = await res.json();
+      if(btn){ btn.disabled=false; btn.textContent="Retry"; }
+      console.error("Resend error:", err);
+      alert("Email failed: " + (err.message||JSON.stringify(err)));
+    }
+  } catch(e){
+    if(btn){ btn.disabled=false; btn.textContent="Retry"; }
+    alert("Network error: " + e.message);
+  }
+  renderEmailList();
+}
+
+async function sendAll(){
+  const period = document.getElementById("email-period-filter")?.value || "all";
+  const list = (period==="all"?students:students.filter(s=>s.period===+period)).filter(s=>s.email);
+  if(!list.length){ alert("No students with email addresses in this period."); return; }
+  // Send one at a time with a small delay to stay within rate limits
+  for(let i=0;i<list.length;i++){
+    await sendOne(list[i].id);
+    if(i < list.length-1) await new Promise(r=>setTimeout(r,300));
+  }
+}
+
 function closeModal(){document.getElementById("modal").classList.add("hidden");}
 
 // ── ADMIN ─────────────────────────────────────────────────────
@@ -1050,6 +1156,28 @@ function editSkill(id){
 }
 
 // ── RESET ACCESS CODE ─────────────────────────────────────────
+async function resetPeriodCodes(){
+  const period = document.getElementById("roster-period")?.value || "all";
+  const list = period === "all" ? students : students.filter(s => s.period === +period);
+  const label = period === "all" ? "ALL students" : `Period ${period} students`;
+
+  if(!list.length){ alert("No students in this period."); return; }
+  if(!confirm(`Reset access codes for ${list.length} ${label}?\n\nEvery student in this group gets a new random code. Their old codes stop working immediately.`)) return;
+
+  let updated = 0;
+  for(const s of list){
+    const newCode = randomCode();
+    const{error} = await sb.from("students").update({access_code: newCode}).eq("id", s.id);
+    if(!error){
+      const idx = students.findIndex(x => x.id === s.id);
+      if(idx > -1) students[idx].access_code = newCode;
+      updated++;
+    }
+  }
+  renderRoster();
+  alert(`✓ ${updated} codes reset. Print the roster and hand out the new codes.`);
+}
+
 async function resetCode(studentId){
   const student = students.find(s=>s.id===studentId);
   if(!student) return;
@@ -1079,6 +1207,22 @@ async function resetCode(studentId){
   );
 
   renderRoster();
+}
+
+// ── DELETE STUDENT ────────────────────────────────────────────
+async function deleteStudent(id, name){
+  if(!confirm(`Delete ${name}?
+
+This will permanently remove the student and ALL their score history. This cannot be undone.`)) return;
+  const{error} = await sb.from("students").delete().eq("id", id);
+  if(error){ alert("Error: " + error.message); return; }
+  // Remove from local state immediately so UI updates fast
+  students = students.filter(s => s.id !== id);
+  delete entries[id];
+  renderRoster();
+  renderProgress();
+  renderLB();
+  renderStudentList();
 }
 
 // ── TEACHER SHARE / MERGE ─────────────────────────────────────
@@ -1315,11 +1459,11 @@ function generateQR(){
 
   const wrap = document.getElementById("qr-img-wrap");
 
-  // Use Google Charts QR API — zero dependencies, always works
+  // api.qrserver.com — free, reliable, no API key needed
   const encoded = encodeURIComponent(currentQRUrl);
-  const src = "https://chart.googleapis.com/chart?cht=qr&chs=220x220&chl=" + encoded + "&chco=0D1B3E&chf=bg,s,FFFFFF&chld=M|1";
+  const src = "https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=" + encoded + "&bgcolor=ffffff&color=0D1B3E&margin=10&format=png";
 
-  wrap.innerHTML = '<img src="' + src + '" style="width:220px;height:220px;border-radius:8px;border:8px solid #fff;display:block" alt="QR Code" onerror="this.parentNode.innerHTML='<div style=&quot;font-size:12px;color:var(--text2);text-align:center;padding:1rem&quot;>QR unavailable offline.<br>Share the link below.</div>'"/>';
+  wrap.innerHTML = '<img src="' + src + '" width="220" height="220" style="border-radius:8px;border:8px solid #fff;display:block" alt="QR Code" onerror="this.parentNode.innerHTML='<div style=&quot;color:var(--text2);font-size:12px;text-align:center;padding:1rem&quot;>QR unavailable.<br>Share the link below.</div>'"/>';
 }
 
 function downloadQR(){
