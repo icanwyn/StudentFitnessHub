@@ -65,9 +65,9 @@ tr:hover td{background:rgba(201,168,76,0.04)}
 .nav-btn{padding:6px 16px;border-radius:99px;font-size:12px;letter-spacing:.04em;text-transform:uppercase;font-weight:500}
 .nav-btn.active{background:var(--gold-glow);color:var(--gold);border-color:var(--border2);box-shadow:0 0 12px var(--gold-glow)}
 .nav-btn.admin-active{background:var(--purple-lt);color:var(--purple);border-color:var(--purple)}
-.tab-row{display:flex;gap:4px;background:var(--surface2);padding:4px;border-radius:7px;width:fit-content;flex-wrap:wrap;margin-bottom:1rem;border:1px solid var(--border)}
-.tab-btn{padding:5px 13px;border:none;background:transparent;color:var(--text3);border-radius:5px;font-size:12px;letter-spacing:.03em;text-transform:uppercase;font-weight:500}
-.tab-btn.active{background:var(--gold-glow);color:var(--gold);box-shadow:inset 0 0 0 1px var(--border2)}
+.tab-row{display:flex;gap:3px;background:var(--surface2);padding:4px;border-radius:9px;margin-bottom:1rem;border:1px solid var(--border);width:100%}
+.tab-btn{flex:1;padding:7px 6px;border:none;background:transparent;color:var(--text3);border-radius:6px;font-size:11px;letter-spacing:.03em;text-transform:uppercase;font-weight:500;white-space:nowrap;text-align:center;min-width:0}
+.tab-btn.active{background:var(--gold-glow);color:var(--gold);box-shadow:inset 0 0 0 1px rgba(201,168,76,0.35);font-weight:600}
 .drop-zone{border:1.5px dashed var(--border2);border-radius:10px;padding:2rem;text-align:center;cursor:pointer;transition:all .2s}
 .drop-zone:hover{border-color:var(--gold);background:var(--gold-glow)}
 .info{background:var(--gold-glow);border:1px solid rgba(201,168,76,0.25);border-radius:6px;padding:9px 13px;font-size:12px;color:var(--gold-lt);margin-bottom:12px}
@@ -154,10 +154,10 @@ const ADMIN_EMAIL  = "your-admin@example.com"; // ✏️ change this to your ema
           <button class="tab-btn"        id="tab-skills"   onclick="setTab('skills')">⚡ Skills</button>
           <button class="tab-btn"        id="tab-share"    onclick="setTab('share')">🤝 Share</button>
         </div>
-        <div style="margin-left:auto;display:flex;gap:6px">
-          <button onclick="openQRModal()">📱 QR Codes</button>
-          <button onclick="openEmailModal()">✉ Email Codes</button>
-          <button onclick="loadData()">↻ Refresh</button>
+        <div style="display:flex;gap:6px">
+          <button onclick="openQRModal()" style="flex:1;font-size:12px;padding:7px 10px">📱 QR Codes</button>
+          <button onclick="openEmailModal()" style="flex:1;font-size:12px;padding:7px 10px">✉ Email Codes</button>
+          <button onclick="loadData()" style="flex:1;font-size:12px;padding:7px 10px">↻ Refresh</button>
         </div>
       </div>
 
@@ -1258,7 +1258,10 @@ function setTab(t){
 
       <!-- QR Display -->
       <div style="display:flex;flex-direction:column;align-items:center;gap:14px;padding:1.25rem;background:var(--surface2);border-radius:12px;border:1px solid var(--border);margin-bottom:16px">
-        <canvas id="qr-canvas" style="border-radius:8px;background:#fff;padding:10px"></canvas>
+        <canvas id="qr-canvas" style="display:none"></canvas>
+        <div id="qr-img-wrap" style="min-width:220px;min-height:220px;display:flex;align-items:center;justify-content:center">
+          <div class="spinner"></div>
+        </div>
         <div style="text-align:center">
           <div style="font-size:12px;color:var(--text3);margin-bottom:6px">Or share this link</div>
           <div id="qr-url" class="mono" style="font-size:11px;color:var(--gold);word-break:break-all;background:var(--surface);padding:8px 12px;border-radius:8px;border:1px solid var(--border)"></div>
@@ -1306,27 +1309,52 @@ function generateQR(){
   if(!ME) return;
   const period = document.getElementById("qr-period").value;
 
-  // Build the student page URL
-  // student.html must be hosted at the same domain as pe-tracker-final.html
-  const base = window.location.href.replace(/[^/]*$/, "student.html");
+  // Build the student page URL dynamically from current location
+  const base = window.location.href.replace(/[^/?#]*(\?.*)?$/, "") + "student.html";
   currentQRUrl = base + "?t=" + ME.id + (period !== "all" ? "&p=" + period : "");
 
   document.getElementById("qr-url").textContent = currentQRUrl;
 
+  // Use QRCode library — try toDataURL first (more reliable), fallback to toCanvas
   const canvas = document.getElementById("qr-canvas");
-  QRCode.toCanvas(canvas, currentQRUrl, {
-    width: 200,
-    margin: 1,
-    color: { dark: "#0D1B3E", light: "#FFFFFF" }
-  }, err => { if(err) console.error(err); });
+  const wrap = document.getElementById("qr-img-wrap");
+
+  if(typeof QRCode === "undefined"){
+    // Library not loaded — show URL only
+    canvas.style.display = "none";
+    if(wrap) wrap.innerHTML = '<div style="font-size:12px;color:var(--red);text-align:center">QR library not loaded.<br>Share the link below instead.</div>';
+    return;
+  }
+
+  try {
+    QRCode.toDataURL(currentQRUrl, {
+      width: 220, margin: 2,
+      color: { dark: "#0D1B3E", light: "#FFFFFF" }
+    }, (err, dataUrl) => {
+      if(err){
+        console.error("QR error:", err);
+        canvas.style.display = "none";
+        if(wrap) wrap.innerHTML = `<div style="font-size:12px;color:var(--text2);text-align:center">QR generation failed.<br>Share the link below instead.</div>`;
+        return;
+      }
+      // Render as img tag — works in all browsers including Safari
+      canvas.style.display = "none";
+      if(wrap){
+        wrap.innerHTML = `<img src="${dataUrl}" style="width:220px;height:220px;border-radius:8px;display:block" alt="QR Code"/>`;
+      }
+    });
+  } catch(e){
+    console.error("QR exception:", e);
+  }
 }
 
 function downloadQR(){
-  const canvas = document.getElementById("qr-canvas");
   const period = document.getElementById("qr-period").value;
+  const img = document.querySelector("#qr-img-wrap img");
+  if(!img){ alert("QR not ready yet."); return; }
   const a = document.createElement("a");
   a.download = `pe-qr-${period === "all" ? "all" : "period"+period}.png`;
-  a.href = canvas.toDataURL("image/png");
+  a.href = img.src;
   a.click();
 }
 
